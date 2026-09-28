@@ -398,30 +398,53 @@ class BinaryMessagingController {
       return;
     }
 
-    const messageBodies = new Set();
+    const rawBodies = [];
     const closestBody = this.findMessageBodyForNode(root);
     if (closestBody) {
-      messageBodies.add(closestBody);
+      rawBodies.push(closestBody);
     }
     for (const body of collectMatches(root, MESSAGE_BODY_SELECTOR)) {
-      messageBodies.add(body);
+      rawBodies.push(body);
     }
     for (const container of collectMatches(root, MESSAGE_CONTAINER_SELECTOR)) {
       const body = this.findMessageBodyInContainer(container);
       if (body) {
-        messageBodies.add(body);
+        rawBodies.push(body);
       }
     }
+
+    const messageBodies = new Set();
+    for (const raw of rawBodies) {
+      const innermost = this.findInnermostBody(raw);
+      if (innermost) {
+        messageBodies.add(innermost);
+      }
+    }
+
     for (const body of messageBodies) {
+      if (body.querySelector(MESSAGE_BODY_SELECTOR)) {
+        continue;
+      }
       this.processMessageBody(body);
     }
+  }
+
+  findInnermostBody(body) {
+    if (!isElement(body)) return null;
+    let current = body;
+    let deeper = current.querySelector(MESSAGE_BODY_SELECTOR);
+    while (deeper && deeper !== current) {
+      current = deeper;
+      deeper = current.querySelector(MESSAGE_BODY_SELECTOR);
+    }
+    return current;
   }
 
   findMessageBodyInContainer(container) {
     if (!isElement(container)) return null;
 
     const knownBody = container.querySelector(MESSAGE_BODY_SELECTOR);
-    if (knownBody) return knownBody;
+    if (knownBody) return this.findInnermostBody(knownBody);
 
     return (
       Array.from(container.children).find(
@@ -436,7 +459,7 @@ class BinaryMessagingController {
     if (!isElement(node)) return null;
 
     const knownBody = node.closest(MESSAGE_BODY_SELECTOR);
-    if (knownBody) return knownBody;
+    if (knownBody) return this.findInnermostBody(knownBody);
 
     const container = node.closest(MESSAGE_CONTAINER_SELECTOR);
     return this.findMessageBodyInContainer(container);
@@ -844,6 +867,7 @@ class BinaryMessagingController {
     if (
       !isElement(body) ||
       this.isBinaryUi(body) ||
+      body.querySelector(MESSAGE_BODY_SELECTOR) ||
       body.closest(COMPOSE_SELECTORS.join(",")) ||
       body.closest(QUOTED_CONTENT_SELECTOR)
     ) {
@@ -867,6 +891,23 @@ class BinaryMessagingController {
     if (!state?.host?.isConnected) {
       state = this.createTranslationAction(body);
       if (!state) return;
+    }
+
+    // Deduplicate: ensure only ONE translation action exists per message scope
+    const messageScope =
+      body.closest(MESSAGE_CONTAINER_SELECTOR) ??
+      body.closest('[role="listitem"]') ??
+      body.parentElement?.parentElement ??
+      body.parentElement;
+    if (messageScope) {
+      const existing = messageScope.querySelectorAll(
+        `.tfl-binary-translation[${UI_ATTRIBUTE}]`
+      );
+      for (const el of existing) {
+        if (el !== state.host) {
+          el.remove();
+        }
+      }
     }
 
     state.binary = binary;

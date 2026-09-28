@@ -5,6 +5,7 @@ const {
   encodeTextToBinary,
   decodeBinaryToText,
   isLikelyBinaryMessage,
+  BinaryMessagingController,
 } = require("../../app/browser/tools/binaryMessaging");
 
 const HELLO_BINARY =
@@ -120,4 +121,25 @@ test("long messages round-trip through binary encoding accurately", () => {
   assert.equal(isLikelyBinaryMessage(encoded), true);
   assert.equal(decodeBinaryToText(encoded), longText);
 });
+
+test("findInnermostBody resolves nested message wrappers to innermost content element", () => {
+  const inner = {
+    nodeType: 1,
+    matches: (sel) => sel.includes("messageBodyContent"),
+    querySelector: () => null,
+  };
+  const outer = {
+    nodeType: 1,
+    matches: (sel) => sel.includes("message-body"),
+    querySelector: (sel) =>
+      sel.includes("message-body") || sel.includes("messageBodyContent")
+        ? inner
+        : null,
+  };
+  const ctrl = new BinaryMessagingController({});
+  assert.equal(ctrl.findInnermostBody(outer), inner);
+  assert.equal(ctrl.findInnermostBody(inner), inner);
+  assert.equal(ctrl.findInnermostBody(null), null);
+});
+
 
