@@ -863,43 +863,14 @@ class BinaryMessagingController {
     return (clone.textContent || "").trim();
   }
 
-  findDeepestBinaryElement(element) {
-    if (!isElement(element)) return null;
-    let current = element;
-    let deeper = true;
-    while (deeper) {
-      deeper = false;
-      if (current.children) {
-        for (const child of current.children) {
-          if (!isElement(child) || child.hasAttribute?.(UI_ATTRIBUTE)) continue;
-          const text = this.messageText(child);
-          if (isLikelyBinaryMessage(text)) {
-            current = child;
-            deeper = true;
-            break;
-          }
-        }
-      }
-    }
-    return current;
-  }
-
   processMessageBody(body) {
     if (
       !isElement(body) ||
       this.isBinaryUi(body) ||
+      body.querySelector(MESSAGE_BODY_SELECTOR) ||
       body.closest(COMPOSE_SELECTORS.join(",")) ||
       body.closest(QUOTED_CONTENT_SELECTOR)
     ) {
-      return;
-    }
-
-    // Always resolve to the deepest/innermost element that contains the binary text
-    const leafBody = this.findDeepestBinaryElement(body);
-    if (!leafBody) return;
-    if (leafBody !== body) {
-      // body is an outer container or bubble — process only the leaf inside it
-      this.processMessageBody(leafBody);
       return;
     }
 
@@ -922,25 +893,21 @@ class BinaryMessagingController {
       if (!state) return;
     }
 
-    // Deduplicate: remove any stray or outer translation actions in the ancestor tree
-    let scope = body.parentElement;
-    for (let depth = 0; scope && depth < 8; depth += 1) {
-      const translations = scope.querySelectorAll(
+    // Deduplicate: ensure only ONE translation action exists per message scope
+    const messageScope =
+      body.closest(MESSAGE_CONTAINER_SELECTOR) ??
+      body.closest('[role="listitem"]') ??
+      body.parentElement?.parentElement ??
+      body.parentElement;
+    if (messageScope) {
+      const existing = messageScope.querySelectorAll(
         `.tfl-binary-translation[${UI_ATTRIBUTE}]`
       );
-      for (const el of translations) {
+      for (const el of existing) {
         if (el !== state.host) {
           el.remove();
         }
       }
-      if (
-        scope.matches?.(MESSAGE_CONTAINER_SELECTOR) ||
-        scope.matches?.('[role="listitem"]') ||
-        scope.matches?.('[data-tid*="message"]')
-      ) {
-        break;
-      }
-      scope = scope.parentElement;
     }
 
     state.binary = binary;
