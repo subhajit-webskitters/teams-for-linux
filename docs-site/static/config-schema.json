@@ -1,7 +1,7 @@
 {
   "$generatedBy": "scripts/generateConfigDocs.js",
   "source": "app/config/options.js",
-  "optionCount": 85,
+  "optionCount": 86,
   "options": [
     {
       "name": "appActiveCheckInterval",
@@ -38,6 +38,23 @@
           "type": "boolean",
           "default": true,
           "description": "Show a local Translate Binary action for detected binary messages without replacing the original content."
+        }
+      ]
+    },
+    {
+      "name": "selectiveReadReceipts",
+      "type": "object",
+      "default": {
+        "enabled": true
+      },
+      "description": "Selective read receipts. Suppresses automatic read receipts and displays an eye icon on incoming messages to allow sending read receipts manually.",
+      "applyMode": "restart",
+      "fields": [
+        {
+          "path": "enabled",
+          "type": "boolean",
+          "default": true,
+          "description": "Enable selective read receipts with manual eye icon confirmation."
         }
       ]
     },

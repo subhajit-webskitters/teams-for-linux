@@ -63,6 +63,22 @@ module.exports = {
         },
         applyMode: "restart",
       },
+      selectiveReadReceipts: {
+        default: {
+          enabled: true,
+        },
+        describe:
+          "Selective read receipts. Suppresses automatic read receipts and displays an eye icon on incoming messages to allow sending read receipts manually.",
+        type: "object",
+        fields: {
+          "enabled": {
+            type: "boolean",
+            describe:
+              "Enable selective read receipts with manual eye icon confirmation.",
+          },
+        },
+        applyMode: "restart",
+      },
       screenSharing: {
         default: {
           thumbnail: {
