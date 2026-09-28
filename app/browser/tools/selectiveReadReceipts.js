@@ -4,13 +4,30 @@ const { isTeamsHost } = require("../../helpers/teamsHosts");
 
 const UI_ATTRIBUTE = "data-tfl-receipt-ui";
 
-const MESSAGE_SELECTORS = [
+const MESSAGE_ROW_SELECTORS = [
+  '[role="listitem"]',
   '[data-tid="chat-pane-message"]',
   '[data-tid="channel-pane-message"]',
   '[data-tid="thread-pane-message"]',
+  '[data-tid*="chat-message" i]',
+  '[data-tid*="chat-pane-message" i]',
   ".fui-ChatMessage",
-  '[class*="ChatMessage"]',
-  '[class*="ui-chat__item__message"]',
+  '[class*="ChatMessage" i]',
+  '[class*="ui-chat__item" i]',
+  ".ts-message-list-item",
+  ".ts-message",
+];
+
+const MESSAGE_BODY_SELECTORS = [
+  '[data-tid="messageBodyContent"]',
+  '[data-tid="message-body"]',
+  '[data-tid*="message-body" i]',
+  '[data-tid*="chat-message-text" i]',
+  '[data-testid*="message-body" i]',
+  '[id^="message-body-"]',
+  '[class*="message-body" i]',
+  '[class*="ChatMessage__body" i]',
+  'div[dir="auto"]',
 ];
 
 const TIME_SELECTORS = [
@@ -19,20 +36,34 @@ const TIME_SELECTORS = [
   '[data-tid*="message-time" i]',
   '[class*="timestamp" i]',
   '[class*="time" i]',
+  '[id*="timestamp" i]',
+  ".timestamp-column",
+];
+
+const HEADER_SELECTORS = [
+  '[data-tid*="author" i]',
+  '[class*="author" i]',
+  '[class*="header" i]',
+  '[data-tid*="header" i]',
+  ".ts-msg-name",
+  ".message-body-top-row",
 ];
 
 const MY_MESSAGE_SELECTORS = [
   ".fui-ChatMyMessage",
-  '[class*="ChatMyMessage"]',
-  '[class*="--mine"]',
+  '[class*="ChatMyMessage" i]',
+  '[class*="--mine" i]',
+  '[class*="ui-chat__item__message--mine" i]',
   '[data-tid*="mymessage" i]',
   '[data-tid*="my-message" i]',
-  '[class*="ui-chat__item__message--mine"]',
+  ".self",
+  '[class*="outgoing" i]',
+  '[data-tid*="outgoing" i]',
 ];
 
-const EYE_OFF_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
+const EYE_OFF_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path><line x1="1" y1="1" x2="23" y2="23"></line></svg>`;
 
-const EYE_ON_SVG = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
+const EYE_ON_SVG = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>`;
 
 /**
  * Check whether a given URL is a Teams read receipt / consumption horizon endpoint.
@@ -97,6 +128,8 @@ class SelectiveReadReceiptsController {
   #autoSendPending = new Set();
   #seenMessages = new WeakSet();
   #seenMessageIds = new Set();
+  #pendingRoots = new Set();
+  #scanScheduled = false;
   #interceptorInstalled = false;
   #originalFetch = null;
   #originalXhrOpen = null;
@@ -125,7 +158,7 @@ class SelectiveReadReceiptsController {
   isMyMessage(element) {
     if (!isElement(element)) return false;
     for (const selector of MY_MESSAGE_SELECTORS) {
-      if (element.matches?.(selector) || element.closest?.(selector)) {
+      if (element.matches?.(selector) || element.querySelector?.(selector)) {
         return true;
       }
     }
@@ -140,35 +173,43 @@ class SelectiveReadReceiptsController {
     style.setAttribute(UI_ATTRIBUTE, "true");
     style.textContent = `
       .tfl-read-receipt-btn {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        background: transparent;
-        border: 1px solid transparent;
-        cursor: pointer;
-        padding: 2px 4px;
-        border-radius: 4px;
-        vertical-align: middle;
-        margin-inline: 4px;
-        line-height: 1;
-        transition: color 0.15s ease, opacity 0.15s ease, background 0.15s ease;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: transparent !important;
+        border: 1px solid transparent !important;
+        cursor: pointer !important;
+        padding: 2px 4px !important;
+        border-radius: 4px !important;
+        vertical-align: middle !important;
+        margin-inline: 4px !important;
+        line-height: 1 !important;
+        z-index: 10 !important;
+        position: relative !important;
+        transition: color 0.15s ease, opacity 0.15s ease, background 0.15s ease !important;
       }
       .tfl-read-receipt-btn.unseen {
-        color: #a19f9d;
-        opacity: 0.65;
+        color: #d1d1d1 !important;
+        opacity: 0.85 !important;
       }
       .tfl-read-receipt-btn.unseen:hover {
-        opacity: 1;
-        color: #e1dfdd;
-        background: rgba(128, 128, 128, 0.2);
-        border-color: rgba(128, 128, 128, 0.3);
+        opacity: 1 !important;
+        color: #ffffff !important;
+        background: rgba(255, 255, 255, 0.15) !important;
+        border-color: rgba(255, 255, 255, 0.25) !important;
       }
       .tfl-read-receipt-btn.seen {
-        color: #7f85f5;
-        opacity: 1;
+        color: #7f85f5 !important;
+        opacity: 1 !important;
       }
       .tfl-read-receipt-btn.seen:hover {
-        background: rgba(127, 133, 245, 0.2);
+        background: rgba(127, 133, 245, 0.2) !important;
+      }
+      .tfl-read-receipt-btn svg {
+        display: block !important;
+        width: 16px !important;
+        height: 16px !important;
+        pointer-events: none !important;
       }
     `;
     (this.#document.head ?? this.#document.body).append(style);
@@ -370,9 +411,20 @@ class SelectiveReadReceiptsController {
 
     this.#observer = new this.#MutationObserver((records) => {
       for (const record of records) {
+        if (record.type === "characterData") {
+          const parent = record.target.parentElement;
+          if (parent && !parent.hasAttribute?.(UI_ATTRIBUTE)) {
+            this.queueDiscovery(parent);
+          }
+          continue;
+        }
+
+        if (isElement(record.target) && !record.target.hasAttribute?.(UI_ATTRIBUTE)) {
+          this.queueDiscovery(record.target);
+        }
         for (const node of record.addedNodes) {
           if (isElement(node) && !node.hasAttribute?.(UI_ATTRIBUTE)) {
-            this.discover(node);
+            this.queueDiscovery(node);
           }
         }
       }
@@ -389,29 +441,74 @@ class SelectiveReadReceiptsController {
     this.#started = false;
     this.#observer?.disconnect();
     this.#observer = null;
+    this.#pendingRoots.clear();
+    this.#scanScheduled = false;
     this.#pendingReceipts.clear();
     this.#autoSendPending.clear();
     this.#seenMessageIds.clear();
   }
 
+  queueDiscovery(root) {
+    this.#pendingRoots.add(root);
+    if (this.#scanScheduled) return;
+    this.#scanScheduled = true;
+
+    const schedule = this.#window.queueMicrotask ?? queueMicrotask;
+    schedule(() => {
+      if (!this.#started) {
+        this.#pendingRoots.clear();
+        this.#scanScheduled = false;
+        return;
+      }
+      this.#scanScheduled = false;
+      const roots = Array.from(this.#pendingRoots);
+      this.#pendingRoots.clear();
+      for (const pendingRoot of roots) {
+        this.discover(pendingRoot);
+      }
+    });
+  }
+
   discover(root) {
     if (!isElement(root) || root.hasAttribute?.(UI_ATTRIBUTE)) return;
 
-    const messageSelector = MESSAGE_SELECTORS.join(",");
-    const messages = [];
+    const rows = new Set();
+    const rowSelector = MESSAGE_ROW_SELECTORS.join(",");
 
-    if (root.matches?.(messageSelector)) {
-      messages.push(root);
+    if (root.matches?.(rowSelector)) {
+      rows.add(root);
     }
     if (typeof root.querySelectorAll === "function") {
-      messages.push(...root.querySelectorAll(messageSelector));
+      for (const el of root.querySelectorAll(rowSelector)) {
+        rows.add(el);
+      }
     }
 
-    for (const msg of messages) {
-      if (this.isMyMessage(msg)) {
+    const bodySelector = MESSAGE_BODY_SELECTORS.join(",");
+    const bodies = [];
+    if (root.matches?.(bodySelector)) {
+      bodies.push(root);
+    }
+    if (typeof root.querySelectorAll === "function") {
+      bodies.push(...root.querySelectorAll(bodySelector));
+    }
+
+    for (const body of bodies) {
+      if (body.closest?.('[contenteditable="true"]')) continue;
+      const row =
+        body.closest?.(rowSelector) ||
+        body.parentElement?.parentElement ||
+        body.parentElement;
+      if (row && isElement(row)) {
+        rows.add(row);
+      }
+    }
+
+    for (const row of rows) {
+      if (this.isMyMessage(row)) {
         continue;
       }
-      this.ensureEyeControl(msg);
+      this.ensureEyeControl(row);
     }
   }
 
@@ -446,14 +543,10 @@ class SelectiveReadReceiptsController {
       return;
     }
 
-    // Find the best insertion target (timestamp or header)
-    const timeSelector = TIME_SELECTORS.join(",");
-    let target = messageElement.querySelector(timeSelector);
-
+    // Find timestamp or header
+    let target = messageElement.querySelector(TIME_SELECTORS.join(","));
     if (!target) {
-      target = messageElement.querySelector(
-        '[data-tid*="author" i], [class*="author" i], [class*="header" i]'
-      );
+      target = messageElement.querySelector(HEADER_SELECTORS.join(","));
     }
 
     const msgId = getMessageId(messageElement);
@@ -464,6 +557,10 @@ class SelectiveReadReceiptsController {
     const button = this.#document.createElement("button");
     button.type = "button";
     button.setAttribute(UI_ATTRIBUTE, "true");
+    button.setAttribute(
+      "style",
+      "display: inline-flex !important; align-items: center !important; justify-content: center !important; vertical-align: middle !important; margin-inline: 4px !important; padding: 2px 4px !important; cursor: pointer !important; border: 1px solid transparent !important; border-radius: 4px !important; line-height: 1 !important; z-index: 10 !important; position: relative !important;"
+    );
 
     if (isAlreadySeen) {
       button.className = "tfl-read-receipt-btn seen";
@@ -518,7 +615,14 @@ class SelectiveReadReceiptsController {
     if (target?.parentElement) {
       target.parentElement.insertBefore(button, target.nextSibling);
     } else {
-      messageElement.prepend(button);
+      const bubble =
+        messageElement.querySelector(MESSAGE_BODY_SELECTORS.join(",")) ||
+        messageElement;
+      if (bubble?.parentElement && bubble !== messageElement) {
+        bubble.parentElement.insertBefore(button, bubble.nextSibling);
+      } else {
+        messageElement.prepend(button);
+      }
     }
   }
 }

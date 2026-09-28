@@ -14,6 +14,14 @@
   <url type="bugtracker">https://github.com/IsmaelMartinez/teams-for-linux/issues</url>
   <launchable type="desktop-id">com.github.IsmaelMartinez.teams_for_linux.desktop</launchable>
   <releases>
+    <release version="2.22.1-binary.7" date="2026-09-28">
+      <description>
+        <ul>
+          <li>Fix eye icon discovery across all Teams chat formats with high-visibility styling</li>
+          <li>Completely remove duplicate translation button to the right of message bubble</li>
+        </ul>
+      </description>
+    </release>
     <release version="2.22.1-binary.5" date="2026-09-24">
       <description>
         <ul>

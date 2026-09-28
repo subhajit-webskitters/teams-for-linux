@@ -21,6 +21,9 @@ const MESSAGE_CONTAINER_SELECTORS = [
   '[data-tid="chat-pane-message"]',
   '[data-tid="channel-pane-message"]',
   '[data-tid="thread-pane-message"]',
+  '.fui-ChatMessage',
+  '[class*="ChatMessage"]',
+  '[role="listitem"]',
 ];
 
 const MESSAGE_BODY_SELECTORS = [
@@ -863,20 +866,70 @@ class BinaryMessagingController {
     return (clone.textContent || "").trim();
   }
 
+  findDeepestBinaryElement(element) {
+    if (!isElement(element)) return null;
+    let current = element;
+    let deeper = true;
+    while (deeper) {
+      deeper = false;
+      if (current.children) {
+        for (const child of current.children) {
+          if (!isElement(child) || child.hasAttribute?.(UI_ATTRIBUTE)) continue;
+          const text = this.messageText(child);
+          if (isLikelyBinaryMessage(text)) {
+            current = child;
+            deeper = true;
+            break;
+          }
+        }
+      }
+    }
+    return current;
+  }
+
   processMessageBody(body) {
     if (
       !isElement(body) ||
       this.isBinaryUi(body) ||
-      body.querySelector(MESSAGE_BODY_SELECTOR) ||
       body.closest(COMPOSE_SELECTORS.join(",")) ||
       body.closest(QUOTED_CONTENT_SELECTOR)
     ) {
       return;
     }
 
+    // Always resolve to the deepest/innermost element that contains the binary text
+    const leafBody = this.findDeepestBinaryElement(body);
+    if (!leafBody) return;
+    if (leafBody !== body) {
+      // body is an outer container or bubble — process only the leaf inside it
+      this.processMessageBody(leafBody);
+      return;
+    }
+
+    const messageScope =
+      body.closest(MESSAGE_CONTAINER_SELECTOR) ??
+      body.closest('[role="listitem"]') ??
+      body.closest('.fui-ChatMessage') ??
+      body.closest('[class*="ChatMessage"]') ??
+      body.closest('[data-tid*="message"]') ??
+      body.parentElement?.parentElement ??
+      body.parentElement;
+
     const binary = this.messageText(body);
     const previous = this.#messageStates.get(body);
+
     if (previous?.binary === binary && previous.host?.isConnected) {
+      // Clean up any stray duplicate translations in the same message scope
+      if (messageScope) {
+        const existing = messageScope.querySelectorAll(
+          `.tfl-binary-translation[${UI_ATTRIBUTE}]`
+        );
+        for (const el of existing) {
+          if (el !== previous.host) {
+            el.remove();
+          }
+        }
+      }
       return;
     }
 
@@ -894,11 +947,6 @@ class BinaryMessagingController {
     }
 
     // Deduplicate: ensure only ONE translation action exists per message scope
-    const messageScope =
-      body.closest(MESSAGE_CONTAINER_SELECTOR) ??
-      body.closest('[role="listitem"]') ??
-      body.parentElement?.parentElement ??
-      body.parentElement;
     if (messageScope) {
       const existing = messageScope.querySelectorAll(
         `.tfl-binary-translation[${UI_ATTRIBUTE}]`
@@ -917,6 +965,24 @@ class BinaryMessagingController {
 
   createTranslationAction(body) {
     if (!body.parentElement) return null;
+
+    // Deduplicate: remove any existing translation action in this message scope
+    const messageScope =
+      body.closest(MESSAGE_CONTAINER_SELECTOR) ??
+      body.closest('[role="listitem"]') ??
+      body.closest('.fui-ChatMessage') ??
+      body.closest('[class*="ChatMessage"]') ??
+      body.closest('[data-tid*="message"]') ??
+      body.parentElement?.parentElement ??
+      body.parentElement;
+    if (messageScope) {
+      const existing = messageScope.querySelectorAll(
+        `.tfl-binary-translation[${UI_ATTRIBUTE}]`
+      );
+      for (const el of existing) {
+        el.remove();
+      }
+    }
 
     const host = this.#document.createElement("div");
     host.className = "tfl-binary-translation";

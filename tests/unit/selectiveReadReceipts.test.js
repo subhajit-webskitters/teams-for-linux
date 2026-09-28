@@ -114,14 +114,14 @@ test("isMyMessage correctly identifies own messages", () => {
   const myMsg2 = {
     nodeType: 1,
     matches: () => false,
-    closest: (sel) => sel.includes("--mine"),
+    querySelector: (sel) => (sel.includes("--mine") ? {} : null),
   };
   assert.equal(ctrl.isMyMessage(myMsg2), true);
 
   const incomingMsg = {
     nodeType: 1,
     matches: () => false,
-    closest: () => null,
+    querySelector: () => null,
   };
   assert.equal(ctrl.isMyMessage(incomingMsg), false);
   assert.equal(ctrl.isMyMessage(null), false);
