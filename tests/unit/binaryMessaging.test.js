@@ -86,7 +86,38 @@ test("isLikelyBinaryMessage is conservative", () => {
     ),
     true
   );
+  assert.equal(
+    isLikelyBinaryMessage(
+      "01001000\u00A001100101\u00A001101100\u00A001101100\u00A001101111"
+    ),
+    true
+  );
   for (const original of ["こんにちは", "नमस्ते", "é", "😀"]) {
     assert.equal(isLikelyBinaryMessage(encodeTextToBinary(original)), true);
   }
 });
+
+const { normalizeWhitespace } = require("../../app/browser/tools/binaryMessaging");
+
+test("normalizeWhitespace handles normal and non-breaking spaces and line breaks", () => {
+  assert.equal(normalizeWhitespace(""), "");
+  assert.equal(normalizeWhitespace("  hello   world  "), "hello world");
+  assert.equal(
+    normalizeWhitespace("hello\u00A0world\nnext\tline"),
+    "hello world next line"
+  );
+  assert.equal(
+    normalizeWhitespace("01001000\u00A001100101\n01101100"),
+    "01001000 01100101 01101100"
+  );
+});
+
+test("long messages round-trip through binary encoding accurately", () => {
+  const longText = "This is a detailed and very long message testing binary messaging mode. "
+    .repeat(30)
+    .trim();
+  const encoded = encodeTextToBinary(longText);
+  assert.equal(isLikelyBinaryMessage(encoded), true);
+  assert.equal(decodeBinaryToText(encoded), longText);
+});
+

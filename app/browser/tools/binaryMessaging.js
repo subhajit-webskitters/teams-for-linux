@@ -62,6 +62,19 @@ const UNSUPPORTED_COMPOSER_CONTENT_SELECTOR =
   UNSUPPORTED_COMPOSER_CONTENT_SELECTORS.join(",");
 
 /**
+ * Normalize whitespace, non-breaking spaces, and line breaks to single spaces.
+ *
+ * @param {string} text
+ * @returns {string}
+ */
+function normalizeWhitespace(text) {
+  if (typeof text !== "string") {
+    return "";
+  }
+  return text.replace(/[\u00A0\s]+/gu, " ").trim();
+}
+
+/**
  * Convert text to space-separated UTF-8 bytes represented as 8-bit binary.
  * Binary messaging is encoding only; it does not encrypt or protect content.
  *
@@ -606,11 +619,8 @@ class BinaryMessagingController {
     const expectsMeta = /(?:cmd|command|⌘)\s*\+\s*enter/iu.test(
       shortcutLabel
     );
-    if (
-      (expectsControl && (!event.ctrlKey || event.metaKey)) ||
-      (expectsMeta && (!event.metaKey || event.ctrlKey)) ||
-      (!expectsControl && !expectsMeta && (event.ctrlKey || event.metaKey))
-    ) {
+    const isModifierEnter = event.ctrlKey || event.metaKey;
+    if (!isModifierEnter && (expectsControl || expectsMeta)) {
       return;
     }
     if (this.transformComposer(composer)) {
@@ -627,23 +637,41 @@ class BinaryMessagingController {
     if (!encoded) return;
     this.#scheduledSends.add(composer);
 
-    this.#window.setTimeout?.(() => {
-      try {
-        if (
-          !composer.isConnected ||
-          !sendButton.isConnected ||
-          composerText(composer) !== encoded
-        ) {
-          return;
-        }
+    const tryClickSend = (retriesLeft = 5) => {
+      if (!composer.isConnected || !sendButton.isConnected) {
+        this.#scheduledSends.delete(composer);
+        return;
+      }
 
+      const current = composerText(composer);
+      const isBinary =
+        normalizeWhitespace(current) === normalizeWhitespace(encoded) ||
+        isLikelyBinaryMessage(current);
+
+      if (!isBinary) {
+        this.#scheduledSends.delete(composer);
+        return;
+      }
+
+      const isDisabled =
+        sendButton.disabled ||
+        sendButton.getAttribute("aria-disabled") === "true";
+
+      if (isDisabled && retriesLeft > 0) {
+        this.#window.setTimeout?.(() => tryClickSend(retriesLeft - 1), 50);
+        return;
+      }
+
+      try {
         this.#replayedSendButtons.add(sendButton);
         sendButton.click();
       } finally {
         this.#replayedSendButtons.delete(sendButton);
         this.#scheduledSends.delete(composer);
       }
-    }, COMPOSER_SETTLE_MS);
+    };
+
+    this.#window.setTimeout?.(() => tryClickSend(), COMPOSER_SETTLE_MS);
   }
 
   transformComposer(composer) {
@@ -654,8 +682,18 @@ class BinaryMessagingController {
       return false;
     }
 
+    const normText = normalizeWhitespace(text);
     const pending = this.#pendingEncoded.get(composer);
-    if (pending && text === pending) {
+    if (
+      pending &&
+      (text === pending || normText === normalizeWhitespace(pending))
+    ) {
+      return true;
+    }
+
+    // Do NOT double-encode if the text is ALREADY a valid binary message!
+    if (isLikelyBinaryMessage(text)) {
+      this.#pendingEncoded.set(composer, text);
       return true;
     }
 
@@ -668,7 +706,7 @@ class BinaryMessagingController {
       if (this.#pendingEncoded.get(composer) === binary) {
         this.#pendingEncoded.delete(composer);
       }
-    }, 1000);
+    }, 15000);
     return true;
   }
 
@@ -728,7 +766,11 @@ class BinaryMessagingController {
           inputType: "insertText",
         })
       );
-      return composerText(composer) === text;
+      const current = composerText(composer);
+      return (
+        normalizeWhitespace(current) === normalizeWhitespace(text) ||
+        isLikelyBinaryMessage(current)
+      );
     } finally {
       this.#internalEdit = false;
     }
@@ -775,7 +817,12 @@ class BinaryMessagingController {
           inputType: "insertReplacementText",
         })
       );
-      return composerText(composer).trim() === text;
+      const current = composerText(composer);
+      return (
+        normalizeWhitespace(current) === normalizeWhitespace(text) ||
+        isLikelyBinaryMessage(current) ||
+        Boolean(editor.model)
+      );
     } catch {
       return false;
     } finally {
@@ -881,4 +928,5 @@ module.exports = {
   encodeTextToBinary,
   decodeBinaryToText,
   isLikelyBinaryMessage,
+  normalizeWhitespace,
 };
